@@ -1,0 +1,119 @@
+{
+  "best_model": "Random Forest Regressor",
+  "evaluation_timestamp": "2026-09-12T11:42:54.261557",
+  "total_records": 2979,
+  "train_records": 2383,
+  "test_records": 596,
+  "features": [
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "sma_20",
+    "ema_50",
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "macd_hist",
+    "bb_upper",
+    "bb_lower",
+    "bb_width",
+    "atr_14",
+    "return_1",
+    "return_3",
+    "return_5",
+    "volatility_10",
+    "volatility_20",
+    "hour",
+    "day_of_week",
+    "month",
+    "is_london_ny_overlap"
+  ],
+  "target": "future_close_1",
+  "model_results": {
+    "Random Forest Regressor": {
+      "CV_RMSE_Mean": 66.899,
+      "Test_Metrics": {
+        "MAE": 8.3343,
+        "RMSE": 13.769,
+        "R2": 0.9158,
+        "MAPE_percent": 0.2965,
+        "Directional_Accuracy_percent": 51.85
+      },
+      "Feature_Importance": {
+        "low": 0.6391,
+        "close": 0.1626,
+        "open": 0.0473,
+        "high": 0.0462,
+        "sma_20": 0.0433,
+        "ema_50": 0.0348,
+        "bb_upper": 0.0261,
+        "bb_width": 0.0001,
+        "atr_14": 0.0,
+        "volume": 0.0,
+        "volatility_20": 0.0,
+        "bb_lower": 0.0,
+        "return_3": 0.0,
+        "macd_signal": 0.0,
+        "return_1": 0.0,
+        "macd_hist": 0.0,
+        "macd": 0.0,
+        "volatility_10": 0.0,
+        "return_5": 0.0,
+        "rsi_14": 0.0,
+        "hour": 0.0,
+        "day_of_week": 0.0,
+        "is_london_ny_overlap": 0.0,
+        "month": 0.0
+      }
+    },
+    "Support Vector Regression (SVR)": {
+      "CV_RMSE_Mean": 80.017,
+      "Test_Metrics": {
+        "MAE": 30.0203,
+        "RMSE": 43.5584,
+        "R2": 0.1571,
+        "MAPE_percent": 1.0737,
+        "Directional_Accuracy_percent": 48.66
+      },
+      "Feature_Importance": {}
+    },
+    "Gradient Boosting Regressor": {
+      "CV_RMSE_Mean": 68.9577,
+      "Test_Metrics": {
+        "MAE": 8.8232,
+        "RMSE": 14.8693,
+        "R2": 0.9018,
+        "MAPE_percent": 0.3137,
+        "Directional_Accuracy_percent": 51.34
+      },
+      "Feature_Importance": {
+        "low": 0.6374,
+        "close": 0.2264,
+        "open": 0.0768,
+        "high": 0.0423,
+        "bb_upper": 0.0123,
+        "sma_20": 0.0028,
+        "ema_50": 0.0012,
+        "bb_lower": 0.0006,
+        "rsi_14": 0.0,
+        "return_1": 0.0,
+        "bb_width": 0.0,
+        "volatility_20": 0.0,
+        "atr_14": 0.0,
+        "volume": 0.0,
+        "macd_signal": 0.0,
+        "return_3": 0.0,
+        "macd_hist": 0.0,
+        "macd": 0.0,
+        "return_5": 0.0,
+        "volatility_10": 0.0,
+        "day_of_week": 0.0,
+        "month": 0.0,
+        "hour": 0.0,
+        "is_london_ny_overlap": 0.0
+      }
+    }
+  }
+}

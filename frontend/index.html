@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XAU/USD Gold Price Prediction | ML Trading Terminal</title>
+  <!-- Google Fonts & Chart.js -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="gold-icon">⚜</div>
+      <div>
+        <h1>XAU/USD Gold Intelligence</h1>
+        <span class="subtext">Machine Learning Market Price Prediction & Analytics</span>
+      </div>
+    </div>
+    <div class="nav-actions">
+      <div class="status-badge" id="api-status">
+        <span class="status-dot"></span>
+        <span id="status-text">Backend Connected</span>
+      </div>
+      <button class="btn btn-outline" id="btn-open-api-modal">Twelve Data API</button>
+      <button class="btn btn-primary" id="btn-refresh-data">↻ Refresh Data</button>
+    </div>
+  </header>
+
+  <!-- Live Market Ticker -->
+  <div class="ticker-bar">
+    <div class="ticker-item">
+      <span class="label">INSTRUMENT</span>
+      <span class="val font-mono">XAU/USD (Gold)</span>
+    </div>
+    <div class="ticker-item">
+      <span class="label">CURRENT PRICE</span>
+      <span class="val font-mono" id="ticker-current-price">$0.00</span>
+    </div>
+    <div class="ticker-item">
+      <span class="label">24H HIGH / LOW</span>
+      <span class="val font-mono" id="ticker-high-low">$0.00 / $0.00</span>
+    </div>
+    <div class="ticker-item">
+      <span class="label">ACTIVE MODEL</span>
+      <span class="val highlight" id="ticker-active-model">Random Forest Regressor</span>
+    </div>
+    <div class="ticker-item">
+      <span class="label">DATA SOURCE</span>
+      <span class="val font-mono">Twelve Data API / Historical Feed</span>
+    </div>
+  </div>
+
+  <!-- Main Container Grid -->
+  <main class="dashboard-container">
+    
+    <!-- Left Column: Charting Section -->
+    <section class="chart-section">
+      <div class="card chart-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Market Price & Technical Overlays</h2>
+            <span class="badge">1-Hour Timeframe</span>
+          </div>
+          <div class="chart-controls">
+            <label><input type="checkbox" id="toggle-sma" checked> SMA (20)</label>
+            <label><input type="checkbox" id="toggle-ema" checked> EMA (50)</label>
+            <label><input type="checkbox" id="toggle-bb" checked> Bollinger Bands</label>
+            <select id="candle-count-select">
+              <option value="50">50 Candles</option>
+              <option value="100" selected>100 Candles</option>
+              <option value="150">150 Candles</option>
+            </select>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="priceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Secondary Chart: RSI & MACD -->
+      <div class="card sub-chart-card">
+        <div class="card-header">
+          <div class="tab-group">
+            <button class="tab-btn active" data-target="rsi">RSI Indicator (14)</button>
+            <button class="tab-btn" data-target="macd">MACD (12, 26, 9)</button>
+          </div>
+          <span class="current-indicator-val font-mono" id="indicator-val">RSI: --</span>
+        </div>
+        <div class="chart-wrapper sub-wrapper">
+          <canvas id="indicatorChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: ML Prediction & Signals -->
+    <section class="prediction-section">
+      
+      <!-- Prediction Card -->
+      <div class="card prediction-card">
+        <div class="card-header">
+          <h2>Next-Hour ML Forecast</h2>
+          <select id="model-select">
+            <option value="best" selected>Best Model (Random Forest)</option>
+            <option value="rf">Random Forest Regressor</option>
+            <option value="svr">Support Vector Regressor (SVR)</option>
+          </select>
+        </div>
+
+        <div class="prediction-hero">
+          <div class="signal-badge bullish" id="signal-badge">BULLISH ▲</div>
+          <div class="price-display">
+            <div class="price-label">Predicted Future Close (t+1)</div>
+            <div class="price-number font-mono" id="pred-price">$0.00</div>
+          </div>
+          <div class="change-display font-mono" id="pred-change">+0.00 (+0.00%)</div>
+        </div>
+
+        <div class="feature-metrics-grid">
+          <div class="metric-box">
+            <span class="label">RSI (14)</span>
+            <span class="val" id="metric-rsi">--</span>
+          </div>
+          <div class="metric-box">
+            <span class="label">MACD Line</span>
+            <span class="val" id="metric-macd">--</span>
+          </div>
+          <div class="metric-box">
+            <span class="label">SMA (20)</span>
+            <span class="val" id="metric-sma">--</span>
+          </div>
+          <div class="metric-box">
+            <span class="label">EMA (50)</span>
+            <span class="val" id="metric-ema">--</span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="btn-predict-now">
+          ⚡ Run Live Model Inference
+        </button>
+      </div>
+
+      <!-- Interactive Scenario Simulator -->
+      <div class="card simulator-card">
+        <div class="card-header">
+          <h3>Scenario Price Simulator</h3>
+          <span class="help-text">Simulate custom candle</span>
+        </div>
+        <form id="simulator-form" class="simulator-grid">
+          <div class="input-group">
+            <label for="sim-open">Open Price ($)</label>
+            <input type="number" step="0.1" id="sim-open" required>
+          </div>
+          <div class="input-group">
+            <label for="sim-high">High Price ($)</label>
+            <input type="number" step="0.1" id="sim-high" required>
+          </div>
+          <div class="input-group">
+            <label for="sim-low">Low Price ($)</label>
+            <input type="number" step="0.1" id="sim-low" required>
+          </div>
+          <div class="input-group">
+            <label for="sim-close">Close Price ($)</label>
+            <input type="number" step="0.1" id="sim-close" required>
+          </div>
+          <div class="input-group full-width">
+            <label for="sim-volume">Volume</label>
+            <input type="number" id="sim-volume" value="3800" required>
+          </div>
+          <button type="submit" class="btn btn-outline btn-block full-width">
+            Simulate ML Reaction
+          </button>
+        </form>
+        <div class="sim-result hidden" id="sim-result">
+          <div class="sim-line">Predicted Next Close: <strong id="sim-res-price">--</strong></div>
+          <div class="sim-line">Simulated Direction: <span class="badge" id="sim-res-dir">--</span></div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Bottom Section: Model Evaluation Benchmark Scoreboard -->
+  <section class="benchmark-section">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2>Model Evaluation & Assignment Benchmark</h2>
+          <span class="subtext">5-Fold TimeSeries Cross Validation and Holdout Test Set Performance</span>
+        </div>
+      </div>
+      <div class="benchmark-grid" id="benchmark-cards">
+        <!-- Dynamically injected from API -->
+        <div class="loading-state">Loading model metrics...</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Modal: Twelve Data API Settings -->
+  <div class="modal-overlay hidden" id="api-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Twelve Data API Configuration</h3>
+        <button class="modal-close" id="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Connect your account from <a href="https://twelvedata.com/login" target="_blank" rel="noopener">twelvedata.com</a> to stream real-time XAU/USD gold quotes.
+        </p>
+        <div class="input-group">
+          <label for="modal-api-key">Twelve Data API Key</label>
+          <input type="password" id="modal-api-key" placeholder="Enter Twelve Data API key...">
+        </div>
+        <div class="input-group">
+          <label for="modal-interval">Candle Interval</label>
+          <select id="modal-interval">
+            <option value="1h" selected>1 Hour (1h)</option>
+            <option value="1day">1 Day (1d)</option>
+            <option value="15min">15 Minutes (15m)</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="modal-outputsize">Candles to Pull</label>
+          <input type="number" id="modal-outputsize" value="500" min="50" max="2000">
+        </div>
+        <div class="modal-status hidden" id="modal-status-msg"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btn-cancel-modal">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-fetch-api">Save & Ingest Live Data</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>Machine Learning Module - Group Project Assignment | XAU/USD Gold Market Prediction System</p>
+    <p class="copyright">Built with FastAPI, Scikit-Learn, and Chart.js</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
