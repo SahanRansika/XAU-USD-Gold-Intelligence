@@ -9,6 +9,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lightweight Charts (Candlestick Engine) -->
+  <script src="/static/lightweight-charts.standalone.production.js"></script>
+  <!-- TradingView Widget Script -->
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -26,6 +30,9 @@
         <span class="status-dot"></span>
         <span id="status-text">Backend Connected</span>
       </div>
+      <a href="https://www.tradingview.com/chart/S73cSsF5/?symbol=OANDA%3AXAUUSD" target="_blank" rel="noopener noreferrer" class="btn btn-tv-nav" id="btn-nav-tv" title="Open chart on TradingView">
+        <span class="tv-dot"></span> TradingView (OANDA)
+      </a>
       <button class="btn btn-outline" id="btn-open-api-modal">Twelve Data API</button>
       <button class="btn btn-primary" id="btn-refresh-data">↻ Refresh Data</button>
     </div>
@@ -51,7 +58,7 @@
     </div>
     <div class="ticker-item">
       <span class="label">DATA SOURCE</span>
-      <span class="val font-mono">Twelve Data API / Historical Feed</span>
+      <span class="val font-mono">Twelve Data & TradingView (OANDA:XAUUSD)</span>
     </div>
   </div>
 
@@ -61,12 +68,25 @@
     <!-- Left Column: Charting Section -->
     <section class="chart-section">
       <div class="card chart-card">
-        <div class="card-header">
+        <div class="card-header chart-header-row">
           <div class="card-title-group">
-            <h2>Market Price & Technical Overlays</h2>
-            <span class="badge">1-Hour Timeframe</span>
+            <div class="chart-tab-group">
+              <button class="chart-tab-btn active" id="tab-btn-ml" data-chart="ml">
+                <span class="tv-icon">🕯️</span> Candlestick Terminal
+              </button>
+              <button class="chart-tab-btn" id="tab-btn-tv" data-chart="tv">
+                <span class="tv-icon">📈</span> TradingView Web (OANDA)
+              </button>
+            </div>
+            <span class="badge badge-gold" id="chart-symbol-badge">OANDA:XAUUSD · 1H</span>
           </div>
-          <div class="chart-controls">
+
+          <!-- Candlestick Chart Controls (style toggle, overlays, candle count) -->
+          <div class="chart-controls" id="ml-controls">
+            <div class="style-toggle-group">
+              <button type="button" class="style-toggle-btn active" id="btn-chart-candlestick" title="Candlestick Chart">🕯️ Candles</button>
+              <button type="button" class="style-toggle-btn" id="btn-chart-line" title="Line Chart">📈 Line</button>
+            </div>
             <label><input type="checkbox" id="toggle-sma" checked> SMA (20)</label>
             <label><input type="checkbox" id="toggle-ema" checked> EMA (50)</label>
             <label><input type="checkbox" id="toggle-bb" checked> Bollinger Bands</label>
@@ -76,9 +96,35 @@
               <option value="150">150 Candles</option>
             </select>
           </div>
+
+          <!-- TV Controls: Config modal trigger & Direct layout link -->
+          <div class="tv-controls hidden" id="tv-controls">
+            <button class="btn btn-xs btn-outline" id="btn-open-tv-modal" title="Configure TradingView Chart URL">⚙ TV Config</button>
+            <a href="https://www.tradingview.com/chart/S73cSsF5/?symbol=OANDA%3AXAUUSD" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-tv" id="tv-open-link" title="Open chart layout on TradingView">
+              ↗ Open in TradingView
+            </a>
+          </div>
         </div>
-        <div class="chart-wrapper">
-          <canvas id="priceChart"></canvas>
+
+        <!-- Candlestick OHLC Inspection Bar -->
+        <div class="candle-legend-bar font-mono" id="candle-legend-bar">
+          <span class="legend-badge">XAU/USD 1H</span>
+          <span class="legend-item">O: <strong id="legend-open">$0.00</strong></span>
+          <span class="legend-item">H: <strong id="legend-high">$0.00</strong></span>
+          <span class="legend-item">L: <strong id="legend-low">$0.00</strong></span>
+          <span class="legend-item">C: <strong id="legend-close">$0.00</strong></span>
+          <span class="legend-item">Change: <strong id="legend-change" class="bullish-text">+0.00 (+0.00%)</strong></span>
+        </div>
+
+        <!-- Candlestick & Technical Overlay Container -->
+        <div class="chart-wrapper ml-wrapper" id="ml-chart-wrapper">
+          <div id="mlCandleChart" class="candlestick-chart-container"></div>
+          <canvas id="priceChart" class="hidden"></canvas>
+        </div>
+
+        <!-- TV Live Chart Container -->
+        <div class="chart-wrapper tv-wrapper hidden" id="tv-chart-wrapper">
+          <div id="tradingview_widget_container" class="tradingview-container"></div>
         </div>
       </div>
 
@@ -232,6 +278,34 @@
       <div class="modal-footer">
         <button class="btn btn-outline" id="btn-cancel-modal">Cancel</button>
         <button class="btn btn-primary" id="btn-save-fetch-api">Save & Ingest Live Data</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: TradingView Chart URL Configuration -->
+  <div class="modal-overlay hidden" id="tv-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>TradingView Chart Connection</h3>
+        <button class="modal-close" id="btn-close-tv-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Connected TradingView chart workspace. You can update the chart layout URL or market symbol below.
+        </p>
+        <div class="input-group">
+          <label for="modal-tv-url">TradingView Chart URL</label>
+          <input type="url" id="modal-tv-url" value="https://www.tradingview.com/chart/S73cSsF5/?symbol=OANDA%3AXAUUSD">
+        </div>
+        <div class="input-group">
+          <label for="modal-tv-symbol">Chart Symbol</label>
+          <input type="text" id="modal-tv-symbol" value="OANDA:XAUUSD" placeholder="e.g. OANDA:XAUUSD">
+        </div>
+        <div class="modal-status hidden" id="tv-modal-status-msg"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" id="btn-cancel-tv-modal">Close</button>
+        <button class="btn btn-primary" id="btn-save-tv-url">Apply & Reload Chart</button>
       </div>
     </div>
   </div>
