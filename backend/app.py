@@ -7,6 +7,8 @@ Serves:
 - Twelve Data API live refresh endpoint
 - Static file serving for the frontend dashboard
 """
+import utils.transport
+import utils.session
 import sys
 import os
 import json
@@ -102,7 +104,7 @@ def get_model_metrics():
 
 
 @app.get("/api/historical")
-def get_historical_data(limit: int = Query(default=150, ge=20, le=1000)):
+def get_historical_data(limit: int = Query(default=150, ge=1, le=1000)):
     """Return recent historical candles and technical indicators for frontend charts."""
     if not PROCESSED_DATA_PATH.exists():
         raise HTTPException(status_code=404, detail="Engineered dataset not found.")
