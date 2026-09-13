@@ -2,6 +2,25 @@
  * Frontend client logic for XAU/USD Gold Price Prediction ML Dashboard
  */
 
+// TradingView Configuration & State
+const DEFAULT_TV_URL = "https://www.tradingview.com/chart/S73cSsF5/?symbol=OANDA%3AXAUUSD";
+const DEFAULT_TV_SYMBOL = "OANDA:XAUUSD";
+
+let currentTvUrl = localStorage.getItem("tv_chart_url") || DEFAULT_TV_URL;
+let currentTvSymbol = localStorage.getItem("tv_chart_symbol") || DEFAULT_TV_SYMBOL;
+let tvWidget = null;
+let currentChartView = "ml"; // 'ml' (Candlestick Terminal) or 'tv' (TradingView Web)
+let currentChartStyle = "candlestick"; // 'candlestick' or 'line'
+
+// Lightweight Charts State (Candlestick Engine)
+let lwChart = null;
+let lwCandleSeries = null;
+let lwLineSeries = null;
+let lwSmaSeries = null;
+let lwEmaSeries = null;
+let lwBbUpperSeries = null;
+let lwBbLowerSeries = null;
+
 let priceChart = null;
 let indicatorChart = null;
 let currentActiveIndicator = "rsi"; // 'rsi' or 'macd'
@@ -16,6 +35,87 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function initEventListeners() {
+  // Candlestick vs Line style toggle
+  const btnCandle = document.getElementById("btn-chart-candlestick");
+  const btnLine = document.getElementById("btn-chart-line");
+  if (btnCandle) btnCandle.addEventListener("click", () => setChartStyle("candlestick"));
+  if (btnLine) btnLine.addEventListener("click", () => setChartStyle("line"));
+
+  // Chart tab switching (Candlestick Terminal vs TradingView Web)
+  document.querySelectorAll(".chart-tab-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const targetView = e.currentTarget.getAttribute("data-chart");
+      switchChartView(targetView);
+    });
+  });
+
+  // Responsive chart resize handler
+  window.addEventListener("resize", () => {
+    if (lwChart) {
+      const container = document.getElementById("mlCandleChart");
+      if (container && container.clientWidth > 0) {
+        lwChart.applyOptions({
+          width: container.clientWidth,
+          height: container.clientHeight || 440
+        });
+      }
+    }
+  });
+
+  // TradingView modal triggers
+  const tvModal = document.getElementById("tv-modal");
+  const btnOpenTvModal = document.getElementById("btn-open-tv-modal");
+  const btnCloseTvModal = document.getElementById("btn-close-tv-modal");
+  const btnCancelTvModal = document.getElementById("btn-cancel-tv-modal");
+  const btnSaveTvUrl = document.getElementById("btn-save-tv-url");
+  const modalTvUrlInput = document.getElementById("modal-tv-url");
+  const modalTvSymbolInput = document.getElementById("modal-tv-symbol");
+
+  if (btnOpenTvModal) {
+    btnOpenTvModal.addEventListener("click", () => {
+      modalTvUrlInput.value = currentTvUrl;
+      modalTvSymbolInput.value = currentTvSymbol;
+      const statusEl = document.getElementById("tv-modal-status-msg");
+      if (statusEl) statusEl.classList.add("hidden");
+      tvModal.classList.remove("hidden");
+    });
+  }
+
+  if (btnCloseTvModal) btnCloseTvModal.addEventListener("click", () => tvModal.classList.add("hidden"));
+  if (btnCancelTvModal) btnCancelTvModal.addEventListener("click", () => tvModal.classList.add("hidden"));
+
+  if (modalTvUrlInput) {
+    modalTvUrlInput.addEventListener("input", (e) => {
+      const extracted = extractSymbolFromUrl(e.target.value.trim());
+      if (extracted && modalTvSymbolInput) modalTvSymbolInput.value = extracted;
+    });
+  }
+
+  if (btnSaveTvUrl) {
+    btnSaveTvUrl.addEventListener("click", () => {
+      const newUrl = modalTvUrlInput.value.trim() || DEFAULT_TV_URL;
+      const newSymbol = modalTvSymbolInput.value.trim() || extractSymbolFromUrl(newUrl);
+
+      currentTvUrl = newUrl;
+      currentTvSymbol = newSymbol;
+      localStorage.setItem("tv_chart_url", currentTvUrl);
+      localStorage.setItem("tv_chart_symbol", currentTvSymbol);
+
+      initTradingViewWidget(currentTvSymbol);
+
+      const statusMsg = document.getElementById("tv-modal-status-msg");
+      if (statusMsg) {
+        statusMsg.textContent = `Connected to ${currentTvSymbol}!`;
+        statusMsg.className = "modal-status success";
+        statusMsg.classList.remove("hidden");
+      }
+
+      setTimeout(() => {
+        tvModal.classList.add("hidden");
+      }, 1000);
+    });
+  }
+
   // Model selector change
   document.getElementById("model-select").addEventListener("change", (e) => {
     document.getElementById("ticker-active-model").innerText = e.target.options[e.target.selectedIndex].text;
@@ -62,6 +162,182 @@ function initEventListeners() {
   document.getElementById("btn-save-fetch-api").addEventListener("click", handleTwelveDataFetch);
 }
 
+/** Extract symbol query parameter or fallback */
+function extractSymbolFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const sym = parsed.searchParams.get("symbol");
+    if (sym) return decodeURIComponent(sym);
+  } catch (e) {
+    const match = url.match(/[?&]symbol=([^&]+)/);
+    if (match) return decodeURIComponent(match[1]);
+  }
+  return DEFAULT_TV_SYMBOL;
+}
+
+/** Initialize TradingView Advanced Chart Widget */
+function initTradingViewWidget(symbol = currentTvSymbol) {
+  const container = document.getElementById("tradingview_widget_container");
+  if (!container) return;
+  container.innerHTML = "";
+
+  // Update DOM links to the user's specific TradingView chart URL
+  const tvOpenLink = document.getElementById("tv-open-link");
+  if (tvOpenLink) tvOpenLink.href = currentTvUrl;
+
+  const btnNavTv = document.getElementById("btn-nav-tv");
+  if (btnNavTv) btnNavTv.href = currentTvUrl;
+
+  const tvBadge = document.getElementById("tv-symbol-badge");
+  if (tvBadge) tvBadge.innerText = `${symbol} · 1H`;
+
+  if (typeof TradingView !== "undefined" && TradingView.widget) {
+    try {
+      tvWidget = new TradingView.widget({
+        autosize: true,
+        symbol: symbol,
+        interval: "60",
+        timezone: "Etc/UTC",
+        theme: "dark",
+        style: "1",
+        locale: "en",
+        toolbar_bg: "#10141e",
+        enable_publishing: false,
+        allow_symbol_change: true,
+        container_id: "tradingview_widget_container",
+        hide_side_toolbar: false,
+        withdateranges: true,
+        save_image: true,
+        studies: [
+          "STD;SMA",
+          "STD;EMA",
+          "STD;Bollinger_Bands"
+        ]
+      });
+      return;
+    } catch (err) {
+      console.warn("TradingView.widget initialization error, falling back to iframe embed:", err);
+    }
+  }
+
+  // Fallback direct TradingView embed iframe
+  container.innerHTML = `
+    <iframe 
+      src="https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(symbol)}&interval=60&theme=dark&style=1&timezone=Etc%2FUTC&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=10141e" 
+      style="width: 100%; height: 100%; border: none;" 
+      allowtransparency="true" 
+      scrolling="no" 
+      allowfullscreen>
+    </iframe>
+  `;
+}
+
+/** Switch between Candlestick Terminal and TradingView live web chart */
+function switchChartView(view) {
+  currentChartView = view;
+  const tabTv = document.getElementById("tab-btn-tv");
+  const tabMl = document.getElementById("tab-btn-ml");
+  const tvWrapper = document.getElementById("tv-chart-wrapper");
+  const mlWrapper = document.getElementById("ml-chart-wrapper");
+  const tvControls = document.getElementById("tv-controls");
+  const mlControls = document.getElementById("ml-controls");
+  const legendBar = document.getElementById("candle-legend-bar");
+
+  if (view === "tv") {
+    if (tabTv) tabTv.classList.add("active");
+    if (tabMl) tabMl.classList.remove("active");
+    if (tvWrapper) tvWrapper.classList.remove("hidden");
+    if (mlWrapper) mlWrapper.classList.add("hidden");
+    if (tvControls) tvControls.classList.remove("hidden");
+    if (mlControls) mlControls.classList.add("hidden");
+    if (legendBar) legendBar.classList.add("hidden");
+
+    if (!tvWidget) {
+      initTradingViewWidget(currentTvSymbol);
+    }
+  } else {
+    if (tabTv) tabTv.classList.remove("active");
+    if (tabMl) tabMl.classList.add("active");
+    if (tvWrapper) tvWrapper.classList.add("hidden");
+    if (mlWrapper) mlWrapper.classList.remove("hidden");
+    if (tvControls) tvControls.classList.add("hidden");
+    if (mlControls) mlControls.classList.remove("hidden");
+    if (legendBar) legendBar.classList.remove("hidden");
+
+    if (lwChart) {
+      const container = document.getElementById("mlCandleChart");
+      if (container && container.clientWidth > 0) {
+        lwChart.applyOptions({
+          width: container.clientWidth,
+          height: container.clientHeight || 440
+        });
+        lwChart.timeScale().fitContent();
+      }
+    } else if (priceChart) {
+      priceChart.resize();
+    }
+  }
+}
+
+/** Toggle between Candlestick and Line chart presentation */
+function setChartStyle(style) {
+  currentChartStyle = style;
+  const btnCandle = document.getElementById("btn-chart-candlestick");
+  const btnLine = document.getElementById("btn-chart-line");
+
+  if (style === "candlestick") {
+    if (btnCandle) btnCandle.classList.add("active");
+    if (btnLine) btnLine.classList.remove("active");
+    if (lwCandleSeries) lwCandleSeries.applyOptions({ visible: true });
+    if (lwLineSeries) lwLineSeries.applyOptions({ visible: false });
+  } else {
+    if (btnCandle) btnCandle.classList.remove("active");
+    if (btnLine) btnLine.classList.add("active");
+    if (lwCandleSeries) lwCandleSeries.applyOptions({ visible: false });
+    if (lwLineSeries) lwLineSeries.applyOptions({ visible: true });
+  }
+}
+
+/** Update the floating OHLC inspection bar */
+function updateLegendBar(bar) {
+  if (!bar) return;
+  const o = typeof bar.open === "number" ? bar.open : (bar.value ?? 0);
+  const h = typeof bar.high === "number" ? bar.high : o;
+  const l = typeof bar.low === "number" ? bar.low : o;
+  const c = typeof bar.close === "number" ? bar.close : (bar.value ?? o);
+  const diff = c - o;
+  const pct = o !== 0 ? (diff / o) * 100 : 0;
+  const isUp = diff >= 0;
+
+  const openEl = document.getElementById("legend-open");
+  const highEl = document.getElementById("legend-high");
+  const lowEl = document.getElementById("legend-low");
+  const closeEl = document.getElementById("legend-close");
+  const chgEl = document.getElementById("legend-change");
+
+  if (openEl) openEl.innerText = `$${o.toFixed(2)}`;
+  if (highEl) highEl.innerText = `$${h.toFixed(2)}`;
+  if (lowEl) lowEl.innerText = `$${l.toFixed(2)}`;
+  if (closeEl) closeEl.innerText = `$${c.toFixed(2)}`;
+  if (chgEl) {
+    chgEl.innerText = `${isUp ? "+" : ""}$${diff.toFixed(2)} (${isUp ? "+" : ""}${pct.toFixed(2)}%)`;
+    chgEl.className = isUp ? "bullish-text" : "bearish-text";
+  }
+}
+
+/** Safely convert date string into Unix seconds timestamp */
+function parseCandleTime(dtStr) {
+  if (!dtStr) return 0;
+  const clean = dtStr.trim();
+  const iso = clean.includes("T") ? clean : clean.replace(" ", "T") + "Z";
+  const ms = new Date(iso).getTime();
+  if (isNaN(ms)) {
+    const fallback = new Date(clean).getTime();
+    return isNaN(fallback) ? 0 : Math.floor(fallback / 1000);
+  }
+  return Math.floor(ms / 1000);
+}
+
 /** Load historical candle and indicator data */
 async function loadDashboardData() {
   const limit = document.getElementById("candle-count-select").value || 100;
@@ -102,9 +378,199 @@ function populateSimulatorDefaults(latest) {
   document.getElementById("sim-close").value = latest.close.toFixed(2);
 }
 
-/** Render Main Price Chart with Overlays */
+/** Render Main Interactive Candlestick Chart with Technical Overlays */
 function renderPriceChart(candles) {
-  const ctx = document.getElementById("priceChart").getContext("2d");
+  if (!candles || candles.length === 0) return;
+
+  // Prefer Lightweight Charts (Financial Candlestick Engine)
+  if (typeof LightweightCharts !== "undefined") {
+    const container = document.getElementById("mlCandleChart");
+    if (!container) return;
+
+    // Filter, deduplicate, and sort candles by time
+    const seenTimes = new Set();
+    const sortedCandles = [];
+    for (const c of candles) {
+      const t = parseCandleTime(c.datetime);
+      if (t > 0 && !seenTimes.has(t)) {
+        seenTimes.add(t);
+        sortedCandles.push({
+          ...c,
+          _time: t,
+          open: Number(c.open),
+          high: Number(c.high),
+          low: Number(c.low),
+          close: Number(c.close)
+        });
+      }
+    }
+    sortedCandles.sort((a, b) => a._time - b._time);
+
+    const candleData = sortedCandles.map(c => ({
+      time: c._time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close
+    }));
+
+    const lineData = sortedCandles.map(c => ({
+      time: c._time,
+      value: c.close
+    }));
+
+    const smaData = sortedCandles
+      .filter(c => c.sma_20 !== undefined && c.sma_20 !== null)
+      .map(c => ({ time: c._time, value: Number(c.sma_20) }));
+
+    const emaData = sortedCandles
+      .filter(c => c.ema_50 !== undefined && c.ema_50 !== null)
+      .map(c => ({ time: c._time, value: Number(c.ema_50) }));
+
+    const bbUpperData = sortedCandles
+      .filter(c => c.bb_upper !== undefined && c.bb_upper !== null)
+      .map(c => ({ time: c._time, value: Number(c.bb_upper) }));
+
+    const bbLowerData = sortedCandles
+      .filter(c => c.bb_lower !== undefined && c.bb_lower !== null)
+      .map(c => ({ time: c._time, value: Number(c.bb_lower) }));
+
+    if (!lwChart) {
+      container.innerHTML = "";
+      lwChart = LightweightCharts.createChart(container, {
+        width: container.clientWidth || 800,
+        height: 440,
+        layout: {
+          background: { type: "solid", color: "#10141e" },
+          textColor: "#94a3b8",
+          fontSize: 12,
+          fontFamily: "'JetBrains Mono', monospace"
+        },
+        grid: {
+          vertLines: { color: "rgba(255, 255, 255, 0.04)" },
+          horzLines: { color: "rgba(255, 255, 255, 0.04)" }
+        },
+        crosshair: {
+          mode: LightweightCharts.CrosshairMode.Normal,
+          vertLine: {
+            color: "rgba(212, 175, 55, 0.4)",
+            width: 1,
+            style: LightweightCharts.LineStyle.Dashed
+          },
+          horzLine: {
+            color: "rgba(212, 175, 55, 0.4)",
+            width: 1,
+            style: LightweightCharts.LineStyle.Dashed
+          }
+        },
+        rightPriceScale: {
+          borderColor: "rgba(255, 255, 255, 0.1)",
+          scaleMargins: { top: 0.08, bottom: 0.08 }
+        },
+        timeScale: {
+          borderColor: "rgba(255, 255, 255, 0.1)",
+          timeVisible: true,
+          secondsVisible: false
+        },
+        handleScroll: true,
+        handleScale: true
+      });
+
+      // 1. Candlestick series (green/red candles & wicks)
+      lwCandleSeries = lwChart.addSeries(LightweightCharts.CandlestickSeries, {
+        upColor: "#00c087",
+        downColor: "#ef4444",
+        borderVisible: false,
+        wickUpColor: "#00c087",
+        wickDownColor: "#ef4444"
+      });
+
+      // 2. Line series (optional fallback/alternate style)
+      lwLineSeries = lwChart.addSeries(LightweightCharts.LineSeries, {
+        color: "#d4af37",
+        lineWidth: 2,
+        visible: false
+      });
+
+      // 3. Technical Indicator Overlays
+      lwSmaSeries = lwChart.addSeries(LightweightCharts.LineSeries, {
+        color: "#00b4d8",
+        lineWidth: 1.5,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        title: "SMA 20"
+      });
+
+      lwEmaSeries = lwChart.addSeries(LightweightCharts.LineSeries, {
+        color: "#9d4edd",
+        lineWidth: 1.5,
+        title: "EMA 50"
+      });
+
+      lwBbUpperSeries = lwChart.addSeries(LightweightCharts.LineSeries, {
+        color: "rgba(255, 255, 255, 0.35)",
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dotted,
+        title: "BB Upper"
+      });
+
+      lwBbLowerSeries = lwChart.addSeries(LightweightCharts.LineSeries, {
+        color: "rgba(255, 255, 255, 0.35)",
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dotted,
+        title: "BB Lower"
+      });
+
+      // Crosshair inspection updates legend bar
+      lwChart.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) {
+          if (sortedCandles.length > 0) {
+            updateLegendBar(sortedCandles[sortedCandles.length - 1]);
+          }
+          return;
+        }
+        const candleBar = param.seriesData.get(lwCandleSeries);
+        const lineBar = param.seriesData.get(lwLineSeries);
+        if (candleBar) {
+          updateLegendBar(candleBar);
+        } else if (lineBar) {
+          updateLegendBar(lineBar);
+        }
+      });
+    }
+
+    // Set series data
+    lwCandleSeries.setData(candleData);
+    lwLineSeries.setData(lineData);
+    lwSmaSeries.setData(smaData);
+    lwEmaSeries.setData(emaData);
+    lwBbUpperSeries.setData(bbUpperData);
+    lwBbLowerSeries.setData(bbLowerData);
+
+    // Apply overlay visibility & style
+    updateChartDatasets();
+    setChartStyle(currentChartStyle);
+
+    // Auto-fit visible bars
+    lwChart.timeScale().fitContent();
+
+    // Set legend bar to latest candle
+    if (sortedCandles.length > 0) {
+      updateLegendBar(sortedCandles[sortedCandles.length - 1]);
+    }
+
+    return;
+  }
+
+  // Fallback: Chart.js Canvas
+  renderChartJsFallback(candles);
+}
+
+/** Fallback renderer using Chart.js */
+function renderChartJsFallback(candles) {
+  const canvas = document.getElementById("priceChart");
+  if (!canvas) return;
+  canvas.classList.remove("hidden");
+  const ctx = canvas.getContext("2d");
   const labels = candles.map(c => c.datetime.split(" ")[1] || c.datetime);
   const closePrices = candles.map(c => c.close);
   const sma20 = candles.map(c => c.sma_20);
@@ -125,8 +591,7 @@ function renderPriceChart(candles) {
       borderWidth: 2,
       fill: true,
       tension: 0.1,
-      pointRadius: 0,
-      pointHoverRadius: 5
+      pointRadius: 0
     },
     {
       label: "SMA (20)",
@@ -179,47 +644,32 @@ function renderPriceChart(candles) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: "#141822",
-            borderColor: "#232a3b",
-            borderWidth: 1,
-            titleFont: { family: "Inter", weight: "600" },
-            bodyFont: { family: "JetBrains Mono" }
-          }
-        },
-        scales: {
-          x: {
-            grid: { color: "rgba(255, 255, 255, 0.05)" },
-            ticks: { color: "#64748b", font: { family: "JetBrains Mono", size: 10 } }
-          },
-          y: {
-            grid: { color: "rgba(255, 255, 255, 0.05)" },
-            ticks: {
-              color: "#94a3b8",
-              font: { family: "JetBrains Mono", size: 11 },
-              callback: (val) => `$${val.toFixed(0)}`
-            }
-          }
-        }
+        interaction: { mode: "index", intersect: false }
       }
     });
   }
 }
 
+/** Update overlay visibility according to user toggles */
 function updateChartDatasets() {
-  if (!priceChart) return;
-  const showSma = document.getElementById("toggle-sma").checked;
-  const showEma = document.getElementById("toggle-ema").checked;
-  const showBb = document.getElementById("toggle-bb").checked;
+  const showSma = document.getElementById("toggle-sma") ? document.getElementById("toggle-sma").checked : true;
+  const showEma = document.getElementById("toggle-ema") ? document.getElementById("toggle-ema").checked : true;
+  const showBb = document.getElementById("toggle-bb") ? document.getElementById("toggle-bb").checked : true;
 
-  priceChart.data.datasets[1].hidden = !showSma;
-  priceChart.data.datasets[2].hidden = !showEma;
-  priceChart.data.datasets[3].hidden = !showBb;
-  priceChart.data.datasets[4].hidden = !showBb;
-  priceChart.update();
+  if (lwChart) {
+    if (lwSmaSeries) lwSmaSeries.applyOptions({ visible: showSma });
+    if (lwEmaSeries) lwEmaSeries.applyOptions({ visible: showEma });
+    if (lwBbUpperSeries) lwBbUpperSeries.applyOptions({ visible: showBb });
+    if (lwBbLowerSeries) lwBbLowerSeries.applyOptions({ visible: showBb });
+  }
+
+  if (priceChart && priceChart.data && priceChart.data.datasets) {
+    if (priceChart.data.datasets[1]) priceChart.data.datasets[1].hidden = !showSma;
+    if (priceChart.data.datasets[2]) priceChart.data.datasets[2].hidden = !showEma;
+    if (priceChart.data.datasets[3]) priceChart.data.datasets[3].hidden = !showBb;
+    if (priceChart.data.datasets[4]) priceChart.data.datasets[4].hidden = !showBb;
+    priceChart.update();
+  }
 }
 
 /** Render Secondary Chart (RSI or MACD) */
