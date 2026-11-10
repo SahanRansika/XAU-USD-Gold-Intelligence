@@ -7,6 +7,7 @@ Serves:
 - Twelve Data API live refresh endpoint
 - Static file serving for the frontend dashboard
 """
+import utils.net
 import utils.clients
 import utils.http_session
 import utils.transport
